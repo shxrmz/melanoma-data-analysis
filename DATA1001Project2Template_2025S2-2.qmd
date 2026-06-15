@@ -1,0 +1,240 @@
+---
+title: "Improving Melanoma Early Detection in Older Adults"
+title-block-banner: "green"
+title-block-banner-color: "white"
+subtitle: "DATA1001 Project 2 Report"
+author: "550684338"
+format: 
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+---
+
+
+# Client: Cancer Council Australia
+[Cancer Council Australia](https://www.cancer.org.au/) is a national cancer control organisation that works to reduce the impact of many cancers including melanoma through prevention, early detection, research, advocacy and support services. The organisation runs cancer awareness campaigns and promotes strategies aimed at improving melanoma outcomes across Australia. 
+
+# Recommendation
+Cancer Council Australia should strengthen targeted melanoma awareness and early detection campaigns for older adults, focusing on routine skin checks. Data indicates that older patients present with higher Breslow tumour thickness, suggesting delayed diagnosis and increased risk of poorer melanoma-specific outcomes.
+
+# Evidence
+This analysis uses melanoma clinical data obtained from supplementary melanoma data published through the National Library of Medicine’s PubMed Central repository (Cancer Genome Atlas Network, 2015). The dataset contains patient information including Breslow tumour thickness, age at diagnosis, gender, and melanoma-specific survival status.
+
+```{r}
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(plotly)
+library(broom)
+library(gganimate)
+
+data = read.csv("melanoma.csv")
+
+data_clean = data %>%
+  filter(
+    CURATED_BRESLOW != "-",
+    CURATED_MELANOMA_SPECIFIC_VITAL_STATUS..0....ALIVE.OR.CENSORED...1....DEAD.OF.MELANOMA.. %in% c("0", "1"),
+    CURATED_AGE_AT_INITIAL_PATHOLOGIC_DIAGNOSIS != "-",
+    GENDER != "-"
+  ) %>%
+  mutate(
+    CURATED_BRESLOW = as.numeric(CURATED_BRESLOW),
+    CURATED_AGE_AT_INITIAL_PATHOLOGIC_DIAGNOSIS = as.numeric(CURATED_AGE_AT_INITIAL_PATHOLOGIC_DIAGNOSIS),
+    outcome = as.factor(CURATED_MELANOMA_SPECIFIC_VITAL_STATUS..0....ALIVE.OR.CENSORED...1....DEAD.OF.MELANOMA..),
+    GENDER = as.factor(GENDER)
+  ) %>%
+  filter(
+    !is.na(CURATED_BRESLOW),
+    !is.na(CURATED_AGE_AT_INITIAL_PATHOLOGIC_DIAGNOSIS),
+    !is.na(outcome),
+    !is.na(GENDER)
+  )
+
+```
+
+```{r}
+library(ggplot2)
+library(plotly)
+p1 <- ggplot(data_clean,
+             aes(
+               x = outcome,
+               y = CURATED_BRESLOW,
+               fill = outcome,
+               text = paste(
+                 "Breslow Thickness:", CURATED_BRESLOW,
+                 "<br>Outcome:", outcome
+               )
+             )) +
+  geom_boxplot() +
+  labs(
+    title = "Figure 1: Breslow Thickness vs Melanoma-Specific Survival",
+    x = "Melanoma Outcome (0 = Alive/Censored, 1 = Dead)",
+    y = "Breslow Thickness (mm)"
+  ) +
+  theme_minimal()
+
+ggplotly(p1, tooltip = "text")
+```
+
+<br>
+
+Figure 1 compares Breslow thickness between patients alive at last follow-up and patients who died from melanoma. The distributions overlap considerably between groups, with both groups containing several high Breslow thickness values. The alive/censored group also shows slightly more extreme outliers and a marginally larger interquartile range compared with the mortality group (3.92 > 3.64) showing the slightly larger spread.
+
+
+A two-sample t-test was used to compare the mean Breslow thickness between melanoma outcome groups.
+
+```{r}
+group1 <- data_clean %>%
+  filter(outcome == 0) %>%
+  pull(CURATED_BRESLOW)
+
+group2 <- data_clean %>%
+  filter(outcome == 1) %>%
+  pull(CURATED_BRESLOW)
+
+t.test(
+  x = group1,
+  y = group2,
+  alternative = "two.sided",
+  var.equal = FALSE
+)
+```
+The test did not find strong statistical evidence of a difference in mean Breslow thickness between outcome groups (t = 1.15, p = 0.251). This suggests the observed difference in tumour thickness may partly reflect random variation within the sample. However, Breslow thickness remains an important clinical indicator in melanoma prognosis and increasing tumour thickness has consistently been associated with poorer survival outcomes in melanoma research (El Sharouni et al, 2022).
+
+```{r}
+#| message: false
+#| warning: false
+p2 <- ggplot(data_clean,
+             aes(
+               x = CURATED_AGE_AT_INITIAL_PATHOLOGIC_DIAGNOSIS,
+               y = CURATED_BRESLOW,
+               color = outcome,
+               text = paste(
+                 "Age:", CURATED_AGE_AT_INITIAL_PATHOLOGIC_DIAGNOSIS,
+                 "<br>Breslow Thickness:", CURATED_BRESLOW,
+                 "<br>Outcome:", outcome
+               )
+             )) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(
+    aes(group = 1),
+    method = "lm",
+    se = FALSE,
+    linewidth = 1.2
+  ) +
+  scale_y_log10() +
+  labs(
+    title = "Figure 2: Age vs Breslow Thickness by Melanoma Outcome",
+    x = "Age at Diagnosis",
+    y = "Breslow Thickness (mm)",
+    color = "Outcome"
+  ) +
+  theme_minimal()
+
+ggplotly(p2, tooltip = "text")
+```
+<br>
+
+Figure 2 provides strong support for the recommendation, with the scatterplot showing that higher Breslow thickness values become more common as age increases. The upward slope of the line of best fit suggests a positive relationship between age and tumour thickness. A logarithmic scale was used to make the skewed Breslow thickness values easier to interpret. 
+
+
+A Pearson correlation test was used to assess the relationship between age and Breslow thickness.
+
+```{r}
+cor.test(
+  data_clean$CURATED_AGE_AT_INITIAL_PATHOLOGIC_DIAGNOSIS,
+  data_clean$CURATED_BRESLOW,
+  method = "pearson"
+)
+```
+
+ The correlation test found a weak but statistically significant positive relationship between age and Breslow thickness (cor = 0.145, p = 0.034). This suggests older patients may be more likely to present with thicker melanomas, which can indicate later-stage diagnosis or delayed detection. This finding is important because earlier melanoma detection is linked to improved patient outcomes.
+Previous research has shown melanoma incidence increases with age (Paulson et al, 2019), and melanoma self-detection may decrease in older adults (Trolle et al, 2011). Population- based studies have similarly found that older patients often present with greater Breslow thickness values (Kruijff et al, 2012).
+
+
+## Limitations
+A limitation is that patients classified as alive/censored were only confirmed alive at the last follow-up, so long-term outcomes are unknown. Because this is observational data the analysis can only show associations rather than causation.
+
+
+# Ethics Statement
+I adhered to the Shared Value of Professionalism, by ensuring the data collected was analysed responsibly using appropriate statistical methods. I also upheld the Ethical Principle of Maintaining Confidence in Statistics by clearly communicating the limitations, reliability and applicability of my results to ensure accurate interpretation and public trust.
+
+# AI usage statement
+
+OpenAI, ChatGPT (GPT-5.5) [ChatGPT](https://chatgpt.com)
+
+ChatGPT was used to assist with refining report structure, improving word clarity and troubleshooting R code for data cleaning and visualisations such as help with the correlation and t-tests code. All final written content was reviewed by the author.
+
+# Acknowledgements
+
+ Linear Models:  [https://edstem.org/au/courses/30417/lessons/97824/slides/668555](https://edstem.org/au/courses/30417/lessons/97824/slides/668555)
+
+Hypothesis Testing: [https://edstem.org/au/courses/30417/lessons/97829/slides/668598](https://edstem.org/au/courses/30417/lessons/97829/slides/668598)
+
+Tests for Mean: [https://edstem.org/au/courses/30417/lessons/97831/slides/668614](https://edstem.org/au/courses/30417/lessons/97831/slides/668614)
+
+
+# References
+
+Cancer Genome Atlas Network (2015). Genomic Classification of Cutaneous Melanoma. Cell, 161(7), 1681–1696. [https://pmc.ncbi.nlm.nih.gov/articles/PMC4580370/](https://pmc.ncbi.nlm.nih.gov/articles/PMC4580370/)
+
+El Sharouni, M.-A., Rawson, R. V., Sigurdsson, V., Witkamp, A. J., van Gils, C. H., Scolyer, R. A., Thompson, J. F., van Diest, P. J., & Lo, S. N, (2022). The progressive relationship between increasing Breslow thickness and decreasing survival is lost in patients with ultrathick melanomas (≥15 mm in thickness). Journal of the American Academy of Dermatology. 87(2), p298-305 [https://www.jaad.org/article/S0190-9622(22)00174-8/abstract](https://www.jaad.org/article/S0190-9622(22)00174-8/abstract).
+
+Paulson, K. G., Gupta, D., Kim, T. S., et al. (2019). Age-specific incidence of melanoma in the United States. JAMA Dermatology. [https://jamanetwork.com/journals/jamadermatology/fullarticle/2754716](https://jamanetwork.com/journals/jamadermatology/fullarticle/2754716)
+
+Trolle, L., Henrik‐Nielsen, R., & Gniadecki, R. (2011). Ability to self‐detect malignant melanoma decreases with age. Clinical and Experimental Dermatology, 36(5), 499–501. [https://academic.oup.com/ced/article-abstract/36/5/499/6622395?redirectedFrom=fulltext&login=false](https://academic.oup.com/ced/article-abstract/36/5/499/6622395?redirectedFrom=fulltext&login=false)
+
+Kruijff, S., Bastiaannet, E., Francken, A. B., Schaapveld, M., van der Aa, M., & Hoekstra, H. J. (2012). Breslow thickness in the Netherlands: A population-based study of 40880 patients comparing young and elderly patients. British Journal of Cancer, 107, 570–574.[https://www.nature.com/articles/bjc2012255](https://www.nature.com/articles/bjc2012255)
+
+
+# Appendix
+I used the HATPC process to conduct a Pearson correlation test. This tested whether there was a relationship between age at diagnosis and Breslow thickness in melanoma patients.
+
+## H: Hypothesis
+The research question was: Is there a relationship between age at diagnosis and Breslow thickness in melanoma patients?
+
+$$
+H_0: r = 0
+$$
+
+$$
+H_1: r \neq 0
+$$
+The null hypothesis assumes that there is no relationship between age and Breslow thickness.
+The alternative hypothesis assumes there is a relationship between age and Breslow thickness.
+A two-sided test was used because the relationship could be either positive or negative.
+
+## A: Assumptions
+Independence: Each patient observation is independent and each patient appears once in the dataset.
+<br>
+Randomness: The melanoma data is observational rather than randomly sampled. I assumed the dataset is reasonably representative of melanoma patients.
+<br>
+Linearity: Pearson correlation assumes a linear relationship between the two variables. Figure 2 showed a slight positive linear trend.
+<br>
+Numerical variables: Both age at diagnosis and Breslow thickness are numerical variables.
+
+## T: Test Statistic
+The Pearson correlation test was run using the code below:
+```{r}
+cor_test <- cor.test(
+  data_clean$CURATED_AGE_AT_INITIAL_PATHOLOGIC_DIAGNOSIS,
+  data_clean$CURATED_BRESLOW,
+  method = "pearson"
+)
+
+cor_test
+```
+The test gave : cor(r) = 0.145 and t = 2.13
+The positive correlation coefficient suggests a positive relationship between age and Breslow thickness.
+
+## P: P-Value
+The p-value was obtained from the Pearson correlation test done above,
+p = 0.034.
+Since this was a two-sided test the p-value represents the chance of observing a correlation this extreme in either direction, assuming the null hypothesis is true.
+
+## C: Conclusion
+Statistical conclusion: Since p = 0.034 < 0.05, I reject $$ H_0: r = 0 $$ The data provides evidence of a relationship between age at diagnosis and Breslow thickness.
+Scientific conclusion: Older melanoma patients in this dataset tended to present with slightly thicker tumours. This supports the recommendation that Cancer Council Australia should strengthen melanoma awareness and early detection campaigns for older adults.
+
